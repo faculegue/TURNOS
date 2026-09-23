@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Turnos — Laboratorio Legue</title>
+<style>
+  :root {
+    --azul: #0f3057;
+    --azul2: #1e5f8c;
+    --verde: #1f9d55;
+    --rojo: #c0392b;
+    --gris: #f4f6f8;
+    --borde: #d7dde3;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    background: var(--gris);
+    margin: 0;
+    padding: 16px;
+    color: #222;
+  }
+  h1 { font-size: 1.3em; color: var(--azul); margin: 0 0 4px; }
+  h2 { font-size: 1.1em; color: var(--azul); margin: 0 0 12px; }
+  .subt { color: #666; margin-bottom: 20px; font-size: 0.9em; }
+  .pantalla { max-width: 480px; margin: 0 auto; }
+  .oculto { display: none !important; }
+  .btn-grande {
+    display: block;
+    width: 100%;
+    padding: 22px 16px;
+    margin-bottom: 14px;
+    font-size: 1.1em;
+    font-weight: 600;
+    border: none;
+    border-radius: 12px;
+    background: var(--azul);
+    color: #fff;
+    cursor: pointer;
+  }
+  .btn-grande:active { background: var(--azul2); }
+  button.chico {
+    padding: 10px 14px;
+    border-radius: 8px;
+    border: none;
+    font-size: 0.95em;
+    cursor: pointer;
+    font-weight: 600;
+  }
+  .btn-guardar { background: var(--verde); color: #fff; width: 100%; padding: 14px; font-size: 1.05em; margin-top: 10px; }
+  .btn-cancelar { background: var(--rojo); color: #fff; }
+  .btn-cambiar { background: var(--azul2); color: #fff; }
+  .btn-volver { background: none; color: var(--azul); border: none; font-size: 1em; margin-bottom: 12px; padding: 6px 0; cursor: pointer; }
+  label { display: block; margin: 14px 0 6px; font-weight: 600; font-size: 0.92em; }
+  select, input {
+    width: 100%;
+    padding: 12px;
+    font-size: 1em;
+    border-radius: 8px;
+    border: 1px solid var(--borde);
+    background: #fff;
+  }
+  .mensaje { margin-top: 14px; padding: 12px; border-radius: 8px; font-size: 0.95em; }
+  .mensaje.ok { background: #e5f6ec; color: var(--verde); }
+  .mensaje.error { background: #fbe9e7; color: var(--rojo); }
+  .tarjeta {
+    background: #fff;
+    border: 1px solid var(--borde);
+    border-radius: 10px;
+    padding: 12px 14px;
+    margin-bottom: 10px;
+  }
+  .tarjeta .nombre { font-weight: 700; }
+  .tarjeta .detalle { color: #555; font-size: 0.9em; margin: 2px 0 10px; }
+  .tarjeta .acciones { display: flex; gap: 8px; }
+  .form-cambio { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--borde); }
+  canvas { width: 100%; height: auto; border: 1px solid var(--borde); border-radius: 8px; margin-top: 12px; background: #fff; }
+  .cargando { color: #777; font-size: 0.9em; padding: 10px 0; }
+  .btn-descargar { background: var(--verde); color: #fff; width: 100%; padding: 14px; margin-top: 12px; }
+
+  .dia-cuadro { background: #fff; border: 1px solid var(--borde); border-radius: 10px; padding: 10px; margin-bottom: 14px; }
+  .dia-titulo { font-weight: 700; color: var(--azul); margin-bottom: 8px; font-size: 0.95em; }
+  .dia-slots { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 8px; }
+  .slot {
+    border-radius: 8px;
+    padding: 10px 6px;
+    text-align: center;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    border: none;
+    font-family: inherit;
+  }
+  .slot-hora { font-weight: 700; font-size: 0.9em; }
+  .slot-nombre { font-size: 0.72em; word-break: break-word; line-height: 1.2; }
+  .slot.libre { background: #d9f0e1; color: var(--verde); }
+  .slot.libre:active { background: #c2e8d0; }
+  .slot.ocupado { background: #f6d9d5; color: var(--rojo); }
+  .slot.ocupado:active { background: #f0c4bd; }
+
+  .modal-overlay {
+    position: fixed; inset: 0; background: rgba(15, 48, 87, 0.45);
+    display: flex; align-items: center; justify-content: center;
+    padding: 20px; z-index: 50;
+  }
+  .modal-caja { background: #fff; border-radius: 12px; padding: 18px; width: 100%; max-width: 360px; box-shadow: 0 8px 24px rgba(0,0,0,0.25); }
+  .modal-titulo { font-weight: 700; color: var(--azul); margin-bottom: 10px; font-size: 1.05em; }
+  .modal-texto { color: #444; margin-bottom: 14px; font-size: 0.95em; }
+  .modal-caja input { margin-bottom: 14px; }
+  .modal-botones { display: flex; gap: 10px; justify-content: flex-end; }
+  .modal-botones button { padding: 10px 16px; }
+  .modal-ok { background: var(--azul); color: #fff; }
+  .modal-cancel { background: #e5e9ed; color: #333; }
+  .modal-ok:disabled { opacity: 0.6; }
+
+  .toast {
+    position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%);
+    background: var(--azul); color: #fff; padding: 12px 20px; border-radius: 10px;
+    font-size: 0.9em; box-shadow: 0 4px 14px rgba(0,0,0,0.3); z-index: 100;
+    max-width: 90%; text-align: center;
+  }
+  .toast.ok { background: var(--verde); }
+  .toast.error { background: var(--rojo); }
+</style>
+</head>
+<body>
+
+  <!-- ===== PANTALLA HOME ===== -->
+  <div id="home" class="pantalla">
+    <h1>Turnos — Laboratorio Legue</h1>
+    <div class="subt">Elegí una opción</div>
+    <button class="btn-grande" onclick="irA('registrar')">📝 Registrar turno</button>
+    <button class="btn-grande" onclick="irA('disponibilidad')">📷 Ver turnos dados</button>
+    <button class="btn-grande" onclick="irA('modificar')">✏️ Modificar / cancelar turno</button>
+  </div>
+
+  <!-- ===== PANTALLA REGISTRAR ===== -->
+  <div id="pantalla-registrar" class="pantalla oculto">
+    <button class="btn-volver" onclick="irA('home')">‹ Volver</button>
+    <h2>Registrar turno</h2>
+    <div class="subt">Tocá un turno libre para cargar el nombre. Tocá uno ocupado para cancelarlo.</div>
+
+    <div id="reg-grilla"></div>
+  </div>
+
+  <!-- ===== PANTALLA DISPONIBILIDAD (FOTO) ===== -->
+  <div id="pantalla-disponibilidad" class="pantalla oculto">
+    <button class="btn-volver" onclick="irA('home')">‹ Volver</button>
+    <h2>Ver turnos dados</h2>
+    <div class="subt">Horarios ocupados y libres de los próximos días hábiles (sin nombres), para mandar por WhatsApp.</div>
+    <div id="disp-cargando" class="cargando">Generando imagen…</div>
+    <canvas id="disp-canvas" class="oculto"></canvas>
+    <a id="disp-link" class="oculto" href="#" download="turnos-disponibles.png">
+      <button class="btn-grande btn-descargar">Descargar imagen</button>
+    </a>
+  </div>
+
+  <!-- ===== PANTALLA MODIFICAR ===== -->
+  <div id="pantalla-modificar" class="pantalla oculto">
+    <button class="btn-volver" onclick="irA('home')">‹ Volver</button>
+    <h2>Modificar / cancelar turno</h2>
+
+    <label for="mod-busqueda">Buscar por nombre o fecha (aaaa-mm-dd)</label>
+    <input id="mod-busqueda" type="text" placeholder="Ej: Pérez  ó  2026-09-24" onkeyup="if(event.key==='Enter') buscarTurno()">
+    <button class="btn-grande" style="margin-top:10px" onclick="buscarTurno()">Buscar</button>
+
+    <div id="mod-resultados"></div>
+  </div>
+
+  <!-- ===== MODAL ===== -->
+  <div id="modal-overlay" class="modal-overlay oculto">
+    <div class="modal-caja">
+      <div id="modal-titulo" class="modal-titulo"></div>
+      <input id="modal-input" type="text" class="oculto">
+      <div id="modal-texto" class="modal-texto oculto"></div>
+      <div class="modal-botones">
+        <button type="button" class="chico modal-cancel" id="modal-btn-cancelar" onclick="cerrarModal()">Cancelar</button>
+        <button type="button" class="chico modal-ok" id="modal-btn-ok">Guardar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== TOAST (avisos: "Registrado en la nube ✓", errores, etc.) ===== -->
+  <div id="toast" class="toast oculto"></div>
+
+<script>
+  // ================= CONFIGURACIÓN =================
+  // Pegá acá la URL de tu Apps Script publicado (termina en /exec).
+  // Ver COMO_INSTALAR.md para los pasos de despliegue.
+  var APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyTwsQDQ4SzuTpsQoF-huidRmmF_KYrdE7oGdYBsNC74UdRW4XJFdtnAXBmKANPN869/exec';
+  var NOMBRE_LABORATORIO = 'Laboratorio Legue';
+  // ===================================================
+
+  var dispCache = null;            // última grilla de disponibilidad (pantalla Registrar)
+  var ultimosTurnosBuscados = [];  // último resultado de búsqueda (pantalla Modificar)
+
+  // ---------- llamadas a la API (Google Sheets vía Apps Script) ----------
+  function llamarApi(params) {
+    if (!APPS_SCRIPT_URL || APPS_SCRIPT_URL.indexOf('PEGAR_AQUI') !== -1) {
+      return Promise.reject(new Error('Todavía no configuraste la URL de Apps Script (arriba de todo en el código de turnos.html).'));
+    }
+    params._ = Date.now(); // evita que el navegador cachee pedidos idénticos (ej. "disponibilidad")
+    var query = Object.keys(params).map(function (k) {
+      return encodeURIComponent(k) + '=' + encodeURIComponent(params[k] == null ? '' : params[k]);
+    }).join('&');
+    var url = APPS_SCRIPT_URL + (APPS_SCRIPT_URL.indexOf('?') === -1 ? '?' : '&') + query;
+    return fetch(url, { cache: 'no-store' }).then(function (resp) {
+      if (!resp.ok) throw new Error('Error de conexión (' + resp.status + ')');
+      return resp.json();
+    });
+  }
+
+  function obtenerDisponibilidad() {
+    return llamarApi({ accion: 'disponibilidad' });
+  }
+
+  // ---------- toast (avisos flotantes) ----------
+  var toastTimer = null;
+  function mostrarToast(mensaje, tipo) {
+    var el = document.getElementById('toast');
+    el.textContent = mensaje;
+    el.className = 'toast' + (tipo ? ' ' + tipo : '');
+    el.classList.remove('oculto');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { el.classList.add('oculto'); }, 2800);
+  }
+
+  // ---------- navegación ----------
+  function irA(pantalla) {
+    document.querySelectorAll('.pantalla').forEach(function (p) { p.classList.add('oculto'); });
+    document.getElementById(pantalla === 'home' ? 'home' : 'pantalla-' + pantalla).classList.remove('oculto');
+    if (pantalla === 'registrar') cargarRegistro();
+    if (pantalla === 'disponibilidad') generarImagen();
+    if (pantalla === 'modificar') resetModificar();
+  }
+
+  // ---------- REGISTRAR (grilla clickeable) ----------
+  function cargarRegistro() {
+    var cont = document.getElementById('reg-grilla');
+    cont.innerHTML = '<div class="cargando">Cargando turnos desde la nube…</div>';
+    obtenerDisponibilidad().then(function (data) {
+      dispCache = data;
+      renderGrillaRegistro();
+    }).catch(function (err) {
+      cont.innerHTML = '<div class="mensaje error">No se pudo conectar con la nube.<br>' + err.message + '</div>';
+    });
+  }
+
+  function renderGrillaRegistro() {
+    var cont = document.getElementById('reg-grilla');
+    var html = '';
+    dispCache.dias.forEach(function (d) {
+      html += '<div class="dia-cuadro">';
+      html += '<div class="dia-titulo">' + d.diaSemana + ' ' + formatearFechaCorta(d.fecha) + '</div>';
+      html += '<div class="dia-slots">';
+      d.slots.forEach(function (s) {
+        if (s.ocupado) {
+          html += '<button type="button" class="slot ocupado" onclick="clickOcupado(\'' + s.id + '\')">' +
+            '<span class="slot-hora">' + s.hora + '</span>' +
+            '<span class="slot-nombre">' + escapeHtml(s.paciente || 'Ocupado') + '</span></button>';
+        } else {
+          html += '<button type="button" class="slot libre" onclick="clickLibre(\'' + d.fecha + '\',\'' + s.hora + '\')">' +
+            '<span class="slot-hora">' + s.hora + '</span>' +
+            '<span class="slot-nombre">Libre</span></button>';
+        }
+      });
+      html += '</div></div>';
+    });
+    cont.innerHTML = html;
+  }
+
+  function buscarSlotPorId(id) {
+    var res = null;
+    (dispCache ? dispCache.dias : []).forEach(function (d) {
+      d.slots.forEach(function (s) {
+        if (s.id === id) res = { fecha: d.fecha, hora: s.hora, paciente: s.paciente };
+      });
+    });
+    return res;
+  }
+
+  function clickLibre(fecha, hora) {
+    abrirModalTexto('Turno ' + formatearFechaCorta(fecha) + ' ' + hora, 'Nombre del paciente', function (nombre) {
+      mostrarToast('Guardando en la nube…');
+      llamarApi({ accion: 'registrar', fecha: fecha, hora: hora, nombre: nombre }).then(function (res) {
+        if (res.ok) mostrarToast('Registrado en la nube ✓', 'ok');
+        else mostrarToast(res.mensaje, 'error');
+        cargarRegistro();
+      }).catch(function (err) {
+        mostrarToast('Sin conexión: no se pudo guardar. ' + err.message, 'error');
+      });
+    });
+  }
+
+  function clickOcupado(id) {
+    var t = buscarSlotPorId(id);
+    var texto = t ? ('Turno de ' + t.paciente + ' — ' + formatearFechaCorta(t.fecha) + ' ' + t.hora) : '¿Cancelar este turno?';
+    abrirModalConfirmar('¿Cancelar turno?', texto, function () {
+      mostrarToast('Cancelando…');
+      llamarApi({ accion: 'cancelar', id: id }).then(function (res) {
+        if (res.ok) mostrarToast('Turno cancelado ✓', 'ok');
+        else mostrarToast(res.mensaje, 'error');
+        cargarRegistro();
+      }).catch(function (err) {
+        mostrarToast('Sin conexión: no se pudo cancelar. ' + err.message, 'error');
+      });
+    });
+  }
+
+  // ---------- VER TURNOS DADOS (imagen) ----------
+  function generarImagen() {
+    document.getElementById('disp-cargando').classList.remove('oculto');
+    document.getElementById('disp-canvas').classList.add('oculto');
+    document.getElementById('disp-link').classList.add('oculto');
+    obtenerDisponibilidad().then(function (data) {
+      dibujarGrilla(data);
+      document.getElementById('disp-cargando').classList.add('oculto');
+      document.getElementById('disp-canvas').classList.remove('oculto');
+      document.getElementById('disp-link').classList.remove('oculto');
+    }).catch(function (err) {
+      document.getElementById('disp-cargando').textContent = 'No se pudo cargar: ' + err.message;
+    });
+  }
+
+  function dibujarGrilla(data) {
+    var slots = data.dias[0] ? data.dias[0].slots.map(function (s) { return s.hora; }) : [];
+    var colAncho = 210;
+    var filaAlto = 42;
+    var headerAlto = 100;
+    var subheaderAlto = 40;
+    var ancho = data.dias.length * colAncho;
+    var alto = headerAlto + subheaderAlto + slots.length * filaAlto + 30;
+
+    var canvas = document.getElementById('disp-canvas');
+    var escala = 2;
+    canvas.width = ancho * escala;
+    canvas.height = alto * escala;
+    canvas.style.aspectRatio = ancho + ' / ' + alto;
+    var ctx = canvas.getContext('2d');
+    ctx.scale(escala, escala);
+
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, ancho, alto);
+
+    ctx.fillStyle = '#0f3057';
+    ctx.fillRect(0, 0, ancho, headerAlto);
+    ctx.fillStyle = '#ffffff';
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'left';
+    ctx.font = 'bold 24px Arial';
+    ctx.fillText(data.laboratorio + ' — TURNOS DISPONIBLES', 16, 34);
+    ctx.font = 'bold 19px Arial';
+    ctx.fillText('ESCRIBÍ ABAJO EL DÍA Y EL HORARIO QUE ELEGÍS', 16, 74);
+
+    var y0 = headerAlto;
+    ctx.fillStyle = '#e8edf2';
+    ctx.fillRect(0, y0, ancho, subheaderAlto);
+    ctx.fillStyle = '#0f3057';
+    ctx.textAlign = 'center';
+    data.dias.forEach(function (d, i) {
+      var x = i * colAncho + colAncho / 2;
+      ctx.font = 'bold 14px Arial';
+      ctx.fillText(d.diaSemana, x, y0 + subheaderAlto / 2 - 9);
+      ctx.font = '12px Arial';
+      ctx.fillText(formatearFechaCorta(d.fecha), x, y0 + subheaderAlto / 2 + 9);
+    });
+
+    slots.forEach(function (hora, fi) {
+      var y = headerAlto + subheaderAlto + fi * filaAlto;
+      ctx.fillStyle = fi % 2 === 0 ? '#ffffff' : '#f7f9fb';
+      ctx.fillRect(0, y, ancho, filaAlto);
+
+      data.dias.forEach(function (d, di) {
+        var slot = d.slots[fi];
+        var x = di * colAncho + 10;
+        var w = colAncho - 20;
+        var h = filaAlto - 10;
+        ctx.fillStyle = slot.ocupado ? '#f6d9d5' : '#d9f0e1';
+        redondear(ctx, x, y + 5, w, h, 6);
+        ctx.fill();
+        ctx.font = 'bold 13px Arial';
+        ctx.textAlign = 'left';
+        ctx.fillStyle = '#0f3057';
+        ctx.fillText(hora, x + 12, y + filaAlto / 2);
+        ctx.textAlign = 'right';
+        ctx.fillStyle = slot.ocupado ? '#c0392b' : '#1f9d55';
+        ctx.fillText(slot.ocupado ? 'OCUPADO' : 'LIBRE', x + w - 12, y + filaAlto / 2);
+      });
+    });
+    ctx.textAlign = 'center';
+
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#888';
+    ctx.font = '11px Arial';
+    ctx.fillText('Generado: ' + data.generado, 12, alto - 12);
+
+    var link = document.getElementById('disp-link');
+    link.href = canvas.toDataURL('image/png');
+    var ahora = new Date();
+    var fechaArchivo = ahora.getFullYear() + pad(ahora.getMonth() + 1) + pad(ahora.getDate());
+    var horaArchivo = pad(ahora.getHours()) + pad(ahora.getMinutes());
+    link.download = 'turnos_dados_' + fechaArchivo + '_' + horaArchivo + '.png';
+  }
+
+  function redondear(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  // ---------- MODIFICAR / CANCELAR ----------
+  function resetModificar() {
+    document.getElementById('mod-resultados').innerHTML = '';
+    document.getElementById('mod-busqueda').value = '';
+  }
+
+  function buscarTurno() {
+    var texto = document.getElementById('mod-busqueda').value;
+    var cont = document.getElementById('mod-resultados');
+    cont.innerHTML = '<div class="cargando">Buscando…</div>';
+    Promise.all([
+      llamarApi({ accion: 'buscar', texto: texto }),
+      obtenerDisponibilidad()
+    ]).then(function (resultados) {
+      ultimosTurnosBuscados = resultados[0];
+      dispCache = resultados[1];
+      renderResultadosModificar(ultimosTurnosBuscados);
+    }).catch(function (err) {
+      cont.innerHTML = '<div class="mensaje error">No se pudo conectar con la nube.<br>' + err.message + '</div>';
+    });
+  }
+
+  function renderResultadosModificar(turnos) {
+    var cont = document.getElementById('mod-resultados');
+    if (!turnos.length) {
+      cont.innerHTML = '<div class="cargando">No se encontraron turnos activos.</div>';
+      return;
+    }
+    cont.innerHTML = turnos.map(tarjetaTurno).join('');
+  }
+
+  function tarjetaTurno(t) {
+    return (
+      '<div class="tarjeta">' +
+        '<div class="nombre">' + escapeHtml(t.paciente) + '</div>' +
+        '<div class="detalle">' + formatearFechaCorta(t.fecha) + ' — ' + t.hora + (t.telefono ? ' — ' + escapeHtml(t.telefono) : '') + '</div>' +
+        '<div class="acciones">' +
+          '<button class="chico btn-cambiar" onclick="mostrarFormCambio(\'' + t.id + '\')">Cambiar</button>' +
+          '<button class="chico btn-cancelar" onclick="confirmarCancelar(\'' + t.id + '\')">Cancelar</button>' +
+        '</div>' +
+        '<div id="form-cambio-' + t.id + '"></div>' +
+      '</div>'
+    );
+  }
+
+  function mostrarFormCambio(id) {
+    var cont = document.getElementById('form-cambio-' + id);
+    if (cont.innerHTML) { cont.innerHTML = ''; return; }
+    var opcionesDia = (dispCache ? dispCache.dias : []).map(function (d) {
+      return '<option value="' + d.fecha + '">' + d.diaSemana + ' ' + formatearFechaCorta(d.fecha) + '</option>';
+    }).join('');
+    cont.innerHTML =
+      '<div class="form-cambio">' +
+        '<label>Nuevo día</label>' +
+        '<select id="cambio-dia-' + id + '" onchange="actualizarHorasCambio(\'' + id + '\')">' + opcionesDia + '</select>' +
+        '<label>Nuevo horario</label>' +
+        '<select id="cambio-hora-' + id + '"></select>' +
+        '<button class="btn-grande btn-guardar" style="margin-top:10px" onclick="guardarCambio(\'' + id + '\')">Guardar cambio</button>' +
+        '<div id="cambio-mensaje-' + id + '"></div>' +
+      '</div>';
+    actualizarHorasCambio(id);
+  }
+
+  function actualizarHorasCambio(id) {
+    var fecha = document.getElementById('cambio-dia-' + id).value;
+    var dia = (dispCache.dias || []).filter(function (d) { return d.fecha === fecha; })[0];
+    var sel = document.getElementById('cambio-hora-' + id);
+    sel.innerHTML = '';
+    if (!dia) return;
+    dia.slots.forEach(function (s) {
+      var opt = document.createElement('option');
+      opt.value = s.hora;
+      opt.textContent = s.hora + (s.ocupado ? ' (ocupado)' : '');
+      opt.disabled = s.ocupado;
+      sel.appendChild(opt);
+    });
+  }
+
+  function guardarCambio(id) {
+    var fecha = document.getElementById('cambio-dia-' + id).value;
+    var hora = document.getElementById('cambio-hora-' + id).value;
+    var msj = document.getElementById('cambio-mensaje-' + id);
+    msj.innerHTML = '<div class="cargando">Guardando…</div>';
+    llamarApi({ accion: 'modificar', id: id, fecha: fecha, hora: hora }).then(function (res) {
+      msj.innerHTML = '<div class="mensaje ' + (res.ok ? 'ok' : 'error') + '">' + res.mensaje + '</div>';
+      if (res.ok) { mostrarToast('Turno actualizado en la nube ✓', 'ok'); buscarTurno(); }
+    }).catch(function (err) {
+      msj.innerHTML = '<div class="mensaje error">Sin conexión: no se pudo guardar. ' + err.message + '</div>';
+    });
+  }
+
+  function confirmarCancelar(id) {
+    var t = ultimosTurnosBuscados.filter(function (x) { return x.id === id; })[0];
+    var texto = t ? ('Turno de ' + t.paciente + ' — ' + formatearFechaCorta(t.fecha) + ' ' + t.hora) : '¿Confirmás?';
+    abrirModalConfirmar('¿Cancelar turno?', texto, function () {
+      mostrarToast('Cancelando…');
+      llamarApi({ accion: 'cancelar', id: id }).then(function (res) {
+        if (res.ok) mostrarToast('Turno cancelado ✓', 'ok');
+        else mostrarToast(res.mensaje, 'error');
+        buscarTurno();
+      }).catch(function (err) {
+        mostrarToast('Sin conexión: no se pudo cancelar. ' + err.message, 'error');
+      });
+    });
+  }
+
+  // ---------- modal propio (no depende de prompt/confirm/alert del navegador) ----------
+  function abrirModalTexto(titulo, placeholder, callback) {
+    document.getElementById('modal-titulo').textContent = titulo;
+    var input = document.getElementById('modal-input');
+    input.classList.remove('oculto');
+    input.value = '';
+    input.placeholder = placeholder || '';
+    document.getElementById('modal-texto').classList.add('oculto');
+    document.getElementById('modal-btn-cancelar').classList.remove('oculto');
+    var btnOk = document.getElementById('modal-btn-ok');
+    btnOk.textContent = 'Guardar';
+    btnOk.onclick = function () {
+      var val = input.value.trim();
+      if (!val) { input.focus(); return; }
+      cerrarModal();
+      callback(val);
+    };
+    input.onkeyup = function (e) { if (e.key === 'Enter') btnOk.onclick(); };
+    document.getElementById('modal-overlay').classList.remove('oculto');
+    setTimeout(function () { input.focus(); }, 50);
+  }
+
+  function abrirModalConfirmar(titulo, texto, callback) {
+    document.getElementById('modal-titulo').textContent = titulo;
+    document.getElementById('modal-input').classList.add('oculto');
+    var textoEl = document.getElementById('modal-texto');
+    textoEl.textContent = texto;
+    textoEl.classList.remove('oculto');
+    document.getElementById('modal-btn-cancelar').classList.remove('oculto');
+    var btnOk = document.getElementById('modal-btn-ok');
+    btnOk.textContent = 'Confirmar';
+    btnOk.onclick = function () { cerrarModal(); callback(); };
+    document.getElementById('modal-overlay').classList.remove('oculto');
+  }
+
+  function abrirModalAviso(titulo, texto) {
+    document.getElementById('modal-titulo').textContent = titulo;
+    document.getElementById('modal-input').classList.add('oculto');
+    var textoEl = document.getElementById('modal-texto');
+    textoEl.textContent = texto;
+    textoEl.classList.remove('oculto');
+    document.getElementById('modal-btn-cancelar').classList.add('oculto');
+    var btnOk = document.getElementById('modal-btn-ok');
+    btnOk.textContent = 'Cerrar';
+    btnOk.onclick = cerrarModal;
+    document.getElementById('modal-overlay').classList.remove('oculto');
+  }
+
+  function cerrarModal() {
+    document.getElementById('modal-overlay').classList.add('oculto');
+  }
+
+  // ---------- utilidades ----------
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+
+  function formatearFechaCorta(fechaISO) {
+    var partes = fechaISO.split('-');
+    return partes[2] + '/' + partes[1];
+  }
+
+  function escapeHtml(s) {
+    return String(s || '').replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+</script>
+</body>
+</html>
