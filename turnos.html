@@ -80,7 +80,10 @@
   .btn-descargar { background: var(--verde); color: #fff; width: 100%; padding: 14px; margin-top: 12px; }
 
   .dia-cuadro { background: #fff; border: 1px solid var(--borde); border-radius: 10px; padding: 10px; margin-bottom: 14px; }
-  .dia-titulo { font-weight: 700; color: var(--azul); margin-bottom: 8px; font-size: 0.95em; }
+  .dia-titulo-fila { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+  .dia-titulo { font-weight: 700; color: var(--azul); font-size: 0.95em; }
+  .btn-sobreturno { width: auto; padding: 8px 10px; font-size: 0.78em; font-weight: 700; border-radius: 6px; border: 1px solid #e6cd7a; background: #fff8e0; color: #8a6d00; cursor: pointer; font-family: inherit; }
+  .btn-sobreturno:active { background: #ffefc0; }
   .dia-slots { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 8px; }
   .slot {
     border-radius: 8px;
@@ -99,6 +102,9 @@
   .slot.libre:active { background: #c2e8d0; }
   .slot.ocupado { background: #f6d9d5; color: var(--rojo); }
   .slot.ocupado:active { background: #f0c4bd; }
+  .slot.sobreturno { background: #fff3cd; color: #8a6d00; border: 1px dashed #e6cd7a; }
+  .slot.sobreturno:active { background: #ffe9a8; }
+  .slot-etiqueta { font-size: 0.62em; font-weight: 700; text-transform: uppercase; letter-spacing: 0.02em; }
 
   .modal-overlay {
     position: fixed; inset: 0; background: rgba(15, 48, 87, 0.45);
@@ -134,6 +140,7 @@
     <button class="btn-grande" onclick="irA('registrar')">📝 Registrar turno</button>
     <button class="btn-grande" onclick="irA('disponibilidad')">📷 Ver turnos dados</button>
     <button class="btn-grande" onclick="irA('modificar')">✏️ Modificar / cancelar turno</button>
+    <button class="btn-grande" onclick="irA('imprimir')">🖨️ Imprimir turnos del día</button>
   </div>
 
   <!-- ===== PANTALLA REGISTRAR ===== -->
@@ -169,11 +176,25 @@
     <div id="mod-resultados"></div>
   </div>
 
+  <!-- ===== PANTALLA IMPRIMIR (PDF A5) ===== -->
+  <div id="pantalla-imprimir" class="pantalla oculto">
+    <button class="btn-volver" onclick="irA('home')">‹ Volver</button>
+    <h2>Imprimir turnos del día</h2>
+    <div class="subt">Genera un PDF en A5 (para blanco y negro) con la lista de turnos del día elegido.</div>
+
+    <label for="imp-dia">Día</label>
+    <select id="imp-dia"></select>
+
+    <button class="btn-grande btn-guardar" style="margin-top:14px" onclick="generarPdfTurnos()">Generar PDF</button>
+    <div id="imp-mensaje"></div>
+  </div>
+
   <!-- ===== MODAL ===== -->
   <div id="modal-overlay" class="modal-overlay oculto">
     <div class="modal-caja">
       <div id="modal-titulo" class="modal-titulo"></div>
       <input id="modal-input" type="text" class="oculto">
+      <input id="modal-input2" type="text" class="oculto">
       <div id="modal-texto" class="modal-texto oculto"></div>
       <div class="modal-botones">
         <button type="button" class="chico modal-cancel" id="modal-btn-cancelar" onclick="cerrarModal()">Cancelar</button>
@@ -185,6 +206,7 @@
   <!-- ===== TOAST (avisos: "Registrado en la nube ✓", errores, etc.) ===== -->
   <div id="toast" class="toast oculto"></div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script>
   // ================= CONFIGURACIÓN =================
   // Pegá acá la URL de tu Apps Script publicado (termina en /exec).
@@ -234,6 +256,7 @@
     if (pantalla === 'registrar') cargarRegistro();
     if (pantalla === 'disponibilidad') generarImagen();
     if (pantalla === 'modificar') resetModificar();
+    if (pantalla === 'imprimir') cargarImprimir();
   }
 
   // ---------- REGISTRAR (grilla clickeable) ----------
@@ -253,7 +276,10 @@
     var html = '';
     dispCache.dias.forEach(function (d) {
       html += '<div class="dia-cuadro">';
+      html += '<div class="dia-titulo-fila">';
       html += '<div class="dia-titulo">' + d.diaSemana + ' ' + formatearFechaCorta(d.fecha) + '</div>';
+      html += '<button type="button" class="btn-sobreturno" onclick="abrirSobreturno(\'' + d.fecha + '\')">+ Sobreturno</button>';
+      html += '</div>';
       html += '<div class="dia-slots">';
       d.slots.forEach(function (s) {
         if (s.ocupado) {
@@ -265,6 +291,12 @@
             '<span class="slot-hora">' + s.hora + '</span>' +
             '<span class="slot-nombre">Libre</span></button>';
         }
+      });
+      (d.sobreturnos || []).forEach(function (s) {
+        html += '<button type="button" class="slot sobreturno" onclick="clickSobreturno(\'' + s.id + '\')">' +
+          '<span class="slot-hora">' + s.hora + '</span>' +
+          '<span class="slot-etiqueta">Sobreturno</span>' +
+          '<span class="slot-nombre">' + escapeHtml(s.paciente || '') + '</span></button>';
       });
       html += '</div></div>';
     });
@@ -279,6 +311,59 @@
       });
     });
     return res;
+  }
+
+  function buscarSobreturnoPorId(id) {
+    var res = null;
+    (dispCache ? dispCache.dias : []).forEach(function (d) {
+      (d.sobreturnos || []).forEach(function (s) {
+        if (s.id === id) res = { fecha: d.fecha, hora: s.hora, paciente: s.paciente };
+      });
+    });
+    return res;
+  }
+
+  function normalizarHoraInput(v) {
+    v = (v || '').trim();
+    var m = v.match(/^(\d{1,2})[:.hH]?(\d{2})$/);
+    if (!m) return null;
+    var hh = parseInt(m[1], 10);
+    var mm = parseInt(m[2], 10);
+    if (hh < 0 || hh > 23 || mm < 0 || mm > 59) return null;
+    return pad(hh) + ':' + pad(mm);
+  }
+
+  function abrirSobreturno(fecha) {
+    abrirModalDosCampos('Sobreturno ' + formatearFechaCorta(fecha), 'Hora (ej: 08:10)', 'Nombre del paciente', function (horaTexto, nombre) {
+      var hora = normalizarHoraInput(horaTexto);
+      if (!hora) {
+        abrirModalAviso('Hora inválida', 'Escribí la hora en formato HH:MM, por ejemplo 08:10.');
+        return;
+      }
+      mostrarToast('Guardando en la nube…');
+      llamarApi({ accion: 'registrar', fecha: fecha, hora: hora, nombre: nombre, tipo: 'Sobreturno' }).then(function (res) {
+        if (res.ok) mostrarToast('Sobreturno registrado en la nube ✓', 'ok');
+        else mostrarToast(res.mensaje, 'error');
+        cargarRegistro();
+      }).catch(function (err) {
+        mostrarToast('Sin conexión: no se pudo guardar. ' + err.message, 'error');
+      });
+    });
+  }
+
+  function clickSobreturno(id) {
+    var t = buscarSobreturnoPorId(id);
+    var texto = t ? ('Sobreturno de ' + t.paciente + ' — ' + formatearFechaCorta(t.fecha) + ' ' + t.hora) : '¿Cancelar este sobreturno?';
+    abrirModalConfirmar('¿Cancelar sobreturno?', texto, function () {
+      mostrarToast('Cancelando…');
+      llamarApi({ accion: 'cancelar', id: id }).then(function (res) {
+        if (res.ok) mostrarToast('Sobreturno cancelado ✓', 'ok');
+        else mostrarToast(res.mensaje, 'error');
+        cargarRegistro();
+      }).catch(function (err) {
+        mostrarToast('Sin conexión: no se pudo cancelar. ' + err.message, 'error');
+      });
+    });
   }
 
   function clickLibre(fecha, hora) {
@@ -329,7 +414,7 @@
     var colAncho = 210;
     var filaAlto = 42;
     var headerAlto = 100;
-    var subheaderAlto = 40;
+    var subheaderAlto = 56;
     var ancho = data.dias.length * colAncho;
     var alto = headerAlto + subheaderAlto + slots.length * filaAlto + 30;
 
@@ -361,10 +446,17 @@
     ctx.textAlign = 'center';
     data.dias.forEach(function (d, i) {
       var x = i * colAncho + colAncho / 2;
+      var etiqueta = calcularEtiquetaDia(d.fecha);
+      if (etiqueta) {
+        ctx.font = 'bold 12px Arial';
+        ctx.fillStyle = '#1f9d55';
+        ctx.fillText(etiqueta.toUpperCase(), x, y0 + 11);
+        ctx.fillStyle = '#0f3057';
+      }
       ctx.font = 'bold 14px Arial';
-      ctx.fillText(d.diaSemana, x, y0 + subheaderAlto / 2 - 9);
+      ctx.fillText(d.diaSemana, x, y0 + 34);
       ctx.font = '12px Arial';
-      ctx.fillText(formatearFechaCorta(d.fecha), x, y0 + subheaderAlto / 2 + 9);
+      ctx.fillText(formatearFechaCorta(d.fecha), x, y0 + 50);
     });
 
     slots.forEach(function (hora, fi) {
@@ -520,6 +612,116 @@
     });
   }
 
+  // ---------- IMPRIMIR (PDF A5) ----------
+  var NOMBRES_DIAS_JS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+
+  function hoyISO() {
+    var d = new Date();
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+  }
+
+  function fechaMasDias(n) {
+    var d = new Date();
+    d.setHours(0, 0, 0, 0);
+    d.setDate(d.getDate() + n);
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+  }
+
+  function calcularEtiquetaDia(fechaISO) {
+    if (fechaISO === fechaMasDias(1)) return 'Mañana';
+    if (fechaISO === fechaMasDias(2)) return 'Pasado mañana';
+    return null;
+  }
+
+  function nombreDiaSemana(fechaISO) {
+    var p = fechaISO.split('-').map(Number);
+    var d = new Date(p[0], p[1] - 1, p[2]);
+    return NOMBRES_DIAS_JS[d.getDay()];
+  }
+
+  function cargarImprimir() {
+    var sel = document.getElementById('imp-dia');
+    sel.innerHTML = '<option value="">Cargando…</option>';
+    document.getElementById('imp-mensaje').innerHTML = '';
+    obtenerDisponibilidad().then(function (data) {
+      dispCache = data;
+      var hoy = hoyISO();
+      var opciones = [{ fecha: hoy, diaSemana: nombreDiaSemana(hoy), esHoy: true }].concat(data.dias);
+      sel.innerHTML = '';
+      opciones.forEach(function (d) {
+        var opt = document.createElement('option');
+        opt.value = d.fecha;
+        opt.textContent = (d.esHoy ? 'Hoy — ' : '') + d.diaSemana + ' ' + formatearFechaCorta(d.fecha);
+        sel.appendChild(opt);
+      });
+    }).catch(function (err) {
+      sel.innerHTML = '<option value="">Error</option>';
+      document.getElementById('imp-mensaje').innerHTML = '<div class="mensaje error">No se pudo conectar con la nube. ' + err.message + '</div>';
+    });
+  }
+
+  function generarPdfTurnos() {
+    var fecha = document.getElementById('imp-dia').value;
+    if (!fecha) return;
+    var msj = document.getElementById('imp-mensaje');
+    msj.innerHTML = '<div class="cargando">Generando PDF…</div>';
+    llamarApi({ accion: 'buscar', texto: fecha }).then(function (turnos) {
+      turnos = turnos.filter(function (t) { return t.fecha === fecha; });
+      turnos.sort(function (a, b) { return a.hora.localeCompare(b.hora); });
+      dibujarPdfA5(fecha, turnos);
+      msj.innerHTML = '';
+    }).catch(function (err) {
+      msj.innerHTML = '<div class="mensaje error">No se pudo conectar con la nube. ' + err.message + '</div>';
+    });
+  }
+
+  function dibujarPdfA5(fecha, turnos) {
+    var jsPDFctor = window.jspdf.jsPDF;
+    var doc = new jsPDFctor({ unit: 'mm', format: 'a5', orientation: 'portrait' });
+    var anchoPag = 148, altoPag = 210, margen = 10;
+    var y = margen;
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(16);
+    doc.text(NOMBRE_LABORATORIO, margen, y + 6);
+    doc.setFontSize(13);
+    doc.text('Turnos — ' + nombreDiaSemana(fecha) + ' ' + formatearFechaCorta(fecha), margen, y + 14);
+    y += 22;
+    doc.setDrawColor(0);
+    doc.line(margen, y, anchoPag - margen, y);
+    y += 8;
+
+    if (!turnos.length) {
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(12);
+      doc.text('No hay turnos registrados para este día.', margen, y);
+    } else {
+      var filaAlto = (altoPag - y - margen) / turnos.length;
+      filaAlto = Math.min(Math.max(filaAlto, 9), 16);
+      var colHoraAncho = 26;
+      turnos.forEach(function (t, i) {
+        if (i % 2 === 1) {
+          doc.setFillColor(228, 228, 228);
+          doc.rect(margen, y, anchoPag - margen * 2, filaAlto, 'F');
+        }
+        doc.setTextColor(0, 0, 0);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(13);
+        doc.text(t.hora, margen + 2, y + filaAlto / 2 + 3);
+        doc.setFont('helvetica', 'normal');
+        doc.text(String(t.paciente || ''), margen + colHoraAncho, y + filaAlto / 2 + 3);
+        y += filaAlto;
+      });
+    }
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor(120);
+    doc.text('Generado: ' + new Date().toLocaleString('es-AR'), margen, altoPag - 6);
+
+    doc.save('turnos_' + fecha.replace(/-/g, '') + '.pdf');
+  }
+
   // ---------- modal propio (no depende de prompt/confirm/alert del navegador) ----------
   function abrirModalTexto(titulo, placeholder, callback) {
     document.getElementById('modal-titulo').textContent = titulo;
@@ -527,6 +729,7 @@
     input.classList.remove('oculto');
     input.value = '';
     input.placeholder = placeholder || '';
+    document.getElementById('modal-input2').classList.add('oculto');
     document.getElementById('modal-texto').classList.add('oculto');
     document.getElementById('modal-btn-cancelar').classList.remove('oculto');
     var btnOk = document.getElementById('modal-btn-ok');
@@ -542,9 +745,38 @@
     setTimeout(function () { input.focus(); }, 50);
   }
 
+  function abrirModalDosCampos(titulo, placeholder1, placeholder2, callback) {
+    document.getElementById('modal-titulo').textContent = titulo;
+    var input1 = document.getElementById('modal-input');
+    var input2 = document.getElementById('modal-input2');
+    input1.classList.remove('oculto');
+    input1.value = '';
+    input1.placeholder = placeholder1 || '';
+    input2.classList.remove('oculto');
+    input2.value = '';
+    input2.placeholder = placeholder2 || '';
+    document.getElementById('modal-texto').classList.add('oculto');
+    document.getElementById('modal-btn-cancelar').classList.remove('oculto');
+    var btnOk = document.getElementById('modal-btn-ok');
+    btnOk.textContent = 'Guardar';
+    btnOk.onclick = function () {
+      var v1 = input1.value.trim();
+      var v2 = input2.value.trim();
+      if (!v1) { input1.focus(); return; }
+      if (!v2) { input2.focus(); return; }
+      cerrarModal();
+      callback(v1, v2);
+    };
+    input1.onkeyup = function (e) { if (e.key === 'Enter') input2.focus(); };
+    input2.onkeyup = function (e) { if (e.key === 'Enter') btnOk.onclick(); };
+    document.getElementById('modal-overlay').classList.remove('oculto');
+    setTimeout(function () { input1.focus(); }, 50);
+  }
+
   function abrirModalConfirmar(titulo, texto, callback) {
     document.getElementById('modal-titulo').textContent = titulo;
     document.getElementById('modal-input').classList.add('oculto');
+    document.getElementById('modal-input2').classList.add('oculto');
     var textoEl = document.getElementById('modal-texto');
     textoEl.textContent = texto;
     textoEl.classList.remove('oculto');
@@ -558,6 +790,7 @@
   function abrirModalAviso(titulo, texto) {
     document.getElementById('modal-titulo').textContent = titulo;
     document.getElementById('modal-input').classList.add('oculto');
+    document.getElementById('modal-input2').classList.add('oculto');
     var textoEl = document.getElementById('modal-texto');
     textoEl.textContent = texto;
     textoEl.classList.remove('oculto');
