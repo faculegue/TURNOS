@@ -141,6 +141,7 @@
     <button class="btn-grande" onclick="irA('disponibilidad')">📷 Ver turnos dados</button>
     <button class="btn-grande" onclick="irA('modificar')">✏️ Modificar / cancelar turno</button>
     <button class="btn-grande" onclick="irA('imprimir')">🖨️ Imprimir turnos del día</button>
+    <button class="btn-grande" onclick="irA('feriados')">📅 Días no hábiles</button>
   </div>
 
   <!-- ===== PANTALLA REGISTRAR ===== -->
@@ -187,6 +188,21 @@
 
     <button class="btn-grande btn-guardar" style="margin-top:14px" onclick="generarPdfTurnos()">Generar PDF</button>
     <div id="imp-mensaje"></div>
+  </div>
+
+  <!-- ===== PANTALLA DÍAS NO HÁBILES (FERIADOS) ===== -->
+  <div id="pantalla-feriados" class="pantalla oculto">
+    <button class="btn-volver" onclick="irA('home')">‹ Volver</button>
+    <h2>Días no hábiles</h2>
+    <div class="subt">Marcá un feriado u otro día en que no se trabaje. Esos días no se van a ofrecer en "Registrar turno" ni en "Ver turnos dados".</div>
+
+    <label for="fer-fecha">Fecha</label>
+    <input id="fer-fecha" type="date">
+    <label for="fer-motivo">Motivo (opcional)</label>
+    <input id="fer-motivo" type="text" placeholder="Ej: Feriado nacional" onkeyup="if(event.key==='Enter') agregarFeriadoClick()">
+    <button class="btn-grande btn-guardar" style="margin-top:14px" onclick="agregarFeriadoClick()">Agregar</button>
+
+    <div id="fer-lista" style="margin-top:18px"></div>
   </div>
 
   <!-- ===== MODAL ===== -->
@@ -257,6 +273,7 @@
     if (pantalla === 'disponibilidad') generarImagen();
     if (pantalla === 'modificar') resetModificar();
     if (pantalla === 'imprimir') cargarImprimir();
+    if (pantalla === 'feriados') cargarFeriados();
   }
 
   // ---------- REGISTRAR (grilla clickeable) ----------
@@ -494,6 +511,9 @@
     var fechaArchivo = ahora.getFullYear() + pad(ahora.getMonth() + 1) + pad(ahora.getDate());
     var horaArchivo = pad(ahora.getHours()) + pad(ahora.getMinutes());
     link.download = 'turnos_dados_' + fechaArchivo + '_' + horaArchivo + '.png';
+    // Descarga automática: así se ahorra el paso de tocar "Descargar imagen".
+    // El botón queda igual por si hace falta descargarla de nuevo.
+    link.click();
   }
 
   function redondear(ctx, x, y, w, h, r) {
@@ -720,6 +740,72 @@
     doc.text('Generado: ' + new Date().toLocaleString('es-AR'), margen, altoPag - 6);
 
     doc.save('turnos_' + fecha.replace(/-/g, '') + '.pdf');
+  }
+
+  // ---------- DÍAS NO HÁBILES (FERIADOS) ----------
+  function cargarFeriados() {
+    var cont = document.getElementById('fer-lista');
+    cont.innerHTML = '<div class="cargando">Cargando…</div>';
+    llamarApi({ accion: 'feriados' }).then(function (res) {
+      if (!res.ok) { cont.innerHTML = '<div class="mensaje error">' + escapeHtml(res.mensaje || 'Error') + '</div>'; return; }
+      renderListaFeriados(res.feriados || []);
+    }).catch(function (err) {
+      cont.innerHTML = '<div class="mensaje error">No se pudo conectar con la nube.<br>' + err.message + '</div>';
+    });
+  }
+
+  function renderListaFeriados(feriados) {
+    var cont = document.getElementById('fer-lista');
+    if (!feriados.length) {
+      cont.innerHTML = '<div class="cargando">No hay días no hábiles marcados.</div>';
+      return;
+    }
+    cont.innerHTML = feriados.map(function (f) {
+      return (
+        '<div class="tarjeta">' +
+          '<div class="nombre">' + nombreDiaSemana(f.fecha) + ' ' + formatearFechaCorta(f.fecha) + '</div>' +
+          (f.motivo ? '<div class="detalle">' + escapeHtml(f.motivo) + '</div>' : '') +
+          '<div class="acciones">' +
+            '<button type="button" class="chico btn-cancelar" onclick="quitarFeriadoClick(\'' + f.fecha + '\')">Quitar</button>' +
+          '</div>' +
+        '</div>'
+      );
+    }).join('');
+  }
+
+  function agregarFeriadoClick() {
+    var fecha = document.getElementById('fer-fecha').value;
+    var motivo = document.getElementById('fer-motivo').value.trim();
+    if (!fecha) {
+      abrirModalAviso('Falta la fecha', 'Elegí una fecha antes de agregar.');
+      return;
+    }
+    mostrarToast('Guardando en la nube…');
+    llamarApi({ accion: 'agregarFeriado', fecha: fecha, motivo: motivo }).then(function (res) {
+      if (res.ok) {
+        mostrarToast('Día no hábil agregado ✓', 'ok');
+        document.getElementById('fer-fecha').value = '';
+        document.getElementById('fer-motivo').value = '';
+        cargarFeriados();
+      } else {
+        mostrarToast(res.mensaje, 'error');
+      }
+    }).catch(function (err) {
+      mostrarToast('Sin conexión: no se pudo guardar. ' + err.message, 'error');
+    });
+  }
+
+  function quitarFeriadoClick(fecha) {
+    abrirModalConfirmar('¿Quitar día no hábil?', nombreDiaSemana(fecha) + ' ' + formatearFechaCorta(fecha), function () {
+      mostrarToast('Quitando…');
+      llamarApi({ accion: 'quitarFeriado', fecha: fecha }).then(function (res) {
+        if (res.ok) mostrarToast('Día no hábil quitado ✓', 'ok');
+        else mostrarToast(res.mensaje, 'error');
+        cargarFeriados();
+      }).catch(function (err) {
+        mostrarToast('Sin conexión: no se pudo quitar. ' + err.message, 'error');
+      });
+    });
   }
 
   // ---------- modal propio (no depende de prompt/confirm/alert del navegador) ----------
