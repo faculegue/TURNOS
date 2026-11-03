@@ -84,6 +84,10 @@
   .dia-titulo { font-weight: 700; color: var(--azul); font-size: 0.95em; }
   .btn-sobreturno { width: auto; padding: 8px 10px; font-size: 0.78em; font-weight: 700; border-radius: 6px; border: 1px solid #e6cd7a; background: #fff8e0; color: #8a6d00; cursor: pointer; font-family: inherit; }
   .btn-sobreturno:active { background: #ffefc0; }
+  .dia-botones { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+  .btn-expandir { width: auto; padding: 8px 10px; font-size: 0.78em; font-weight: 700; border-radius: 6px; border: 1px solid #9fc8e8; background: #eaf4fc; color: #0f3057; cursor: pointer; font-family: inherit; }
+  .btn-expandir:active { background: #d6ebfa; }
+  .disp-toggle-fila { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
   .dia-slots { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 8px; }
   .slot {
     border-radius: 8px;
@@ -157,7 +161,8 @@
   <div id="pantalla-disponibilidad" class="pantalla oculto">
     <button class="btn-volver" onclick="irA('home')">‹ Volver</button>
     <h2>Ver turnos dados</h2>
-    <div class="subt">Horarios ocupados y libres de los próximos días hábiles (sin nombres), para mandar por WhatsApp.</div>
+    <div class="subt">Horarios ocupados y libres de hoy y los próximos días hábiles (sin nombres), para mandar por WhatsApp. Por defecto se muestran 10 turnos por día (cada 10 min); si se llenan, extendé el día que necesites a cada 5 min.</div>
+    <div id="disp-dias-toggle" class="disp-toggle-fila"></div>
     <div id="disp-cargando" class="cargando">Generando imagen…</div>
     <canvas id="disp-canvas" class="oculto"></canvas>
     <a id="disp-link" class="oculto" href="#" download="turnos-disponibles.png">
@@ -187,6 +192,7 @@
     <select id="imp-dia"></select>
 
     <button class="btn-grande btn-guardar" style="margin-top:14px" onclick="generarPdfTurnos()">Generar PDF</button>
+    <button class="btn-grande" style="margin-top:10px" onclick="descargarImagenDisponibilidadDesdeImprimir()">📷 Descargar imagen de turnos disponibles</button>
     <div id="imp-mensaje"></div>
   </div>
 
@@ -234,6 +240,26 @@
 
   var dispCache = null;            // última grilla de disponibilidad (pantalla Registrar)
   var ultimosTurnosBuscados = [];  // último resultado de búsqueda (pantalla Modificar)
+  var ultimaDispData = null;       // última grilla de disponibilidad (pantalla Ver turnos dados)
+  var diasExpandidos = {};         // fecha -> true/false. true = ese día se ve cada 5 min, false/ausente = cada 10 min (por defecto)
+
+  // ---------- turnos cada 10 min por defecto / cada 5 min al extender ----------
+  function minutosDeHora(hora) {
+    var p = hora.split(':');
+    return parseInt(p[0], 10) * 60 + parseInt(p[1], 10);
+  }
+  function factorDefecto(slots) {
+    if (!slots || slots.length < 2) return 1;
+    var paso = minutosDeHora(slots[1].hora) - minutosDeHora(slots[0].hora); // minutos entre turnos consecutivos (normalmente 5)
+    var f = Math.round(10 / paso); // cuántos turnos de ese paso entran en 10 minutos
+    return f > 0 ? f : 1;
+  }
+  function esDiaExpandido(fecha) {
+    return !!diasExpandidos[fecha];
+  }
+  function toggleExpandido(fecha) {
+    diasExpandidos[fecha] = !diasExpandidos[fecha];
+  }
 
   // ---------- llamadas a la API (Google Sheets vía Apps Script) ----------
   function llamarApi(params) {
@@ -293,13 +319,20 @@
     var cont = document.getElementById('reg-grilla');
     var html = '';
     dispCache.dias.forEach(function (d) {
+      var factor = factorDefecto(d.slots);
+      var expandido = esDiaExpandido(d.fecha);
+      var slotsAMostrar = expandido ? d.slots : d.slots.filter(function (s, i) { return i % factor === 0; });
       html += '<div class="dia-cuadro">';
       html += '<div class="dia-titulo-fila">';
       html += '<div class="dia-titulo">' + d.diaSemana + ' ' + formatearFechaCorta(d.fecha) + '</div>';
+      html += '<div class="dia-botones">';
+      html += '<button type="button" class="btn-expandir" onclick="clickToggleExpandirRegistro(\'' + d.fecha + '\')">' +
+        (expandido ? 'Volver a cada 10 min' : 'Extender a cada 5 min') + '</button>';
       html += '<button type="button" class="btn-sobreturno" onclick="abrirSobreturno(\'' + d.fecha + '\')">+ Sobreturno</button>';
       html += '</div>';
+      html += '</div>';
       html += '<div class="dia-slots">';
-      d.slots.forEach(function (s) {
+      slotsAMostrar.forEach(function (s) {
         if (s.ocupado) {
           html += '<button type="button" class="slot ocupado" onclick="clickOcupado(\'' + s.id + '\')">' +
             '<span class="slot-hora">' + s.hora + '</span>' +
@@ -319,6 +352,11 @@
       html += '</div></div>';
     });
     cont.innerHTML = html;
+  }
+
+  function clickToggleExpandirRegistro(fecha) {
+    toggleExpandido(fecha);
+    renderGrillaRegistro();
   }
 
   function buscarSlotPorId(id) {
@@ -425,8 +463,10 @@
     document.getElementById('disp-cargando').classList.remove('oculto');
     document.getElementById('disp-canvas').classList.add('oculto');
     document.getElementById('disp-link').classList.add('oculto');
-    obtenerDisponibilidad().then(function (data) {
+    obtenerDisponibilidadConHoy().then(function (data) {
+      ultimaDispData = data;
       dibujarGrilla(data);
+      renderTogglesDisponibilidad(data);
       document.getElementById('disp-cargando').classList.add('oculto');
       document.getElementById('disp-canvas').classList.remove('oculto');
       document.getElementById('disp-link').classList.remove('oculto');
@@ -435,8 +475,33 @@
     });
   }
 
-  function dibujarGrilla(data) {
+  function renderTogglesDisponibilidad(data) {
+    var cont = document.getElementById('disp-dias-toggle');
+    if (!cont) return;
+    var html = '';
+    data.dias.forEach(function (d) {
+      var expandido = esDiaExpandido(d.fecha);
+      html += '<button type="button" class="btn-expandir" onclick="clickToggleExpandirImagen(\'' + d.fecha + '\')">' +
+        d.diaSemana + ' ' + formatearFechaCorta(d.fecha) + ': ' + (expandido ? 'volver a cada 10 min' : 'extender a cada 5 min') +
+        '</button>';
+    });
+    cont.innerHTML = html;
+  }
+
+  function clickToggleExpandirImagen(fecha) {
+    toggleExpandido(fecha);
+    if (!ultimaDispData) return;
+    dibujarGrilla(ultimaDispData, false); // al solo cambiar la vista no hace falta volver a descargar la imagen
+    renderTogglesDisponibilidad(ultimaDispData);
+  }
+
+  function dibujarGrilla(data, descargar) {
+    if (descargar === undefined) descargar = true;
+    // El eje de filas siempre usa la resolución completa (cada 5 min) que manda el servidor.
+    // Por defecto cada día sólo muestra sus turnos cada 10 min (filas intermedias en blanco);
+    // si ese día está "extendido" (botón de arriba) se muestran todas las filas (cada 5 min).
     var slots = data.dias[0] ? data.dias[0].slots.map(function (s) { return s.hora; }) : [];
+    var factoresPorDia = data.dias.map(function (d) { return factorDefecto(d.slots); });
     var colAncho = 210;
     var filaAlto = 42;
     var headerAlto = 100;
@@ -495,6 +560,9 @@
         var x = di * colAncho + 10;
         var w = colAncho - 20;
         var h = filaAlto - 10;
+        var expandido = esDiaExpandido(d.fecha);
+        var visible = expandido || (fi % factoresPorDia[di] === 0);
+        if (!visible) return; // fuera de los turnos cada 10 min por defecto para este día: fila en blanco
         ctx.fillStyle = slot.ocupado ? '#f6d9d5' : '#d9f0e1';
         redondear(ctx, x, y + 5, w, h, 6);
         ctx.fill();
@@ -522,7 +590,8 @@
     link.download = 'turnos_dados_' + fechaArchivo + '_' + horaArchivo + '.png';
     // Descarga automática: así se ahorra el paso de tocar "Descargar imagen".
     // El botón queda igual por si hace falta descargarla de nuevo.
-    link.click();
+    // (al redibujar sólo por cambiar cada 10/5 min no se vuelve a descargar sola, para no spamear descargas)
+    if (descargar) link.click();
   }
 
   function redondear(ctx, x, y, w, h, r) {
@@ -754,9 +823,47 @@
   }
 
   function calcularEtiquetaDia(fechaISO) {
+    if (fechaISO === hoyISO()) return 'Hoy';
     if (fechaISO === fechaMasDias(1)) return 'Mañana';
     if (fechaISO === fechaMasDias(2)) return 'Pasado mañana';
     return null;
+  }
+
+  // Igual que obtenerDisponibilidad(), pero le agrega el día de HOY adelante de los
+  // próximos días hábiles (que arrancan mañana). Se usa solo en "Ver turnos dados"
+  // (y en el atajo de la pantalla Imprimir), no en Registrar turno.
+  function obtenerDisponibilidadConHoy() {
+    return obtenerDisponibilidad().then(function (data) {
+      var horas = (data.dias[0] ? data.dias[0].slots : []).map(function (s) { return s.hora; });
+      var fechaHoy = hoyISO();
+      return llamarApi({ accion: 'buscar', texto: fechaHoy }).then(function (turnos) {
+        turnos = (turnos || []).filter(function (t) { return t.fecha === fechaHoy; });
+        var ocupadosHoy = {};
+        var sobreturnosHoy = [];
+        turnos.forEach(function (t) {
+          if (t.tipo === 'Sobreturno') {
+            sobreturnosHoy.push({ hora: t.hora, id: t.id, paciente: t.paciente });
+          } else {
+            ocupadosHoy[t.hora] = { id: t.id, paciente: t.paciente };
+          }
+        });
+        sobreturnosHoy.sort(function (a, b) { return a.hora.localeCompare(b.hora); });
+        var diaHoy = {
+          fecha: fechaHoy,
+          diaSemana: nombreDiaSemana(fechaHoy),
+          slots: horas.map(function (hora) {
+            var oc = ocupadosHoy[hora];
+            return { id: oc ? oc.id : (fechaHoy + '_' + hora), hora: hora, ocupado: !!oc, paciente: oc ? oc.paciente : '' };
+          }),
+          sobreturnos: sobreturnosHoy
+        };
+        data.dias = [diaHoy].concat(data.dias);
+        return data;
+      }).catch(function () {
+        // si falla la búsqueda de hoy, mostramos igual los próximos días hábiles sin frenar todo
+        return data;
+      });
+    });
   }
 
   function nombreDiaSemana(fechaISO) {
@@ -798,6 +905,18 @@
       msj.innerHTML = '';
     }).catch(function (err) {
       msj.innerHTML = '<div class="mensaje error">No se pudo conectar con la nube. ' + err.message + '</div>';
+    });
+  }
+
+  function descargarImagenDisponibilidadDesdeImprimir() {
+    var msj = document.getElementById('imp-mensaje');
+    msj.innerHTML = '<div class="cargando">Generando imagen de turnos disponibles…</div>';
+    obtenerDisponibilidadConHoy().then(function (data) {
+      ultimaDispData = data;
+      dibujarGrilla(data, true); // dibuja en el canvas de "Ver turnos dados" (oculto en esta pantalla) y la descarga sola
+      msj.innerHTML = '<div class="mensaje ok">Imagen de turnos disponibles descargada ✓</div>';
+    }).catch(function (err) {
+      msj.innerHTML = '<div class="mensaje error">No se pudo generar la imagen. ' + err.message + '</div>';
     });
   }
 
