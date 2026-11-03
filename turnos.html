@@ -502,10 +502,10 @@
     // si ese día está "extendido" (botón de arriba) se muestran todas las filas (cada 5 min).
     var slots = data.dias[0] ? data.dias[0].slots.map(function (s) { return s.hora; }) : [];
     var factoresPorDia = data.dias.map(function (d) { return factorDefecto(d.slots); });
-    var colAncho = 210;
-    var filaAlto = 42;
-    var headerAlto = 100;
-    var subheaderAlto = 56;
+    var colAncho = 250;
+    var filaAlto = 54;
+    var headerAlto = 110;
+    var subheaderAlto = 68;
     var ancho = data.dias.length * colAncho;
     var alto = headerAlto + subheaderAlto + slots.length * filaAlto + 30;
 
@@ -525,10 +525,10 @@
     ctx.fillStyle = '#ffffff';
     ctx.textBaseline = 'middle';
     ctx.textAlign = 'left';
-    ctx.font = 'bold 24px Arial';
-    ctx.fillText(data.laboratorio + ' — TURNOS DISPONIBLES', 16, 34);
-    ctx.font = 'bold 19px Arial';
-    ctx.fillText('ESCRIBÍ ABAJO EL DÍA Y EL HORARIO QUE ELEGÍS', 16, 74);
+    ctx.font = 'bold 28px Arial';
+    ctx.fillText(data.laboratorio + ' — TURNOS DISPONIBLES', 16, 38);
+    ctx.font = 'bold 22px Arial';
+    ctx.fillText('ESCRIBÍ ABAJO EL DÍA Y EL HORARIO QUE ELEGÍS', 16, 82);
 
     var y0 = headerAlto;
     ctx.fillStyle = '#e8edf2';
@@ -539,15 +539,15 @@
       var x = i * colAncho + colAncho / 2;
       var etiqueta = calcularEtiquetaDia(d.fecha);
       if (etiqueta) {
-        ctx.font = 'bold 12px Arial';
+        ctx.font = 'bold 15px Arial';
         ctx.fillStyle = '#1f9d55';
-        ctx.fillText(etiqueta.toUpperCase(), x, y0 + 11);
+        ctx.fillText(etiqueta.toUpperCase(), x, y0 + 14);
         ctx.fillStyle = '#0f3057';
       }
-      ctx.font = 'bold 14px Arial';
-      ctx.fillText(d.diaSemana, x, y0 + 34);
-      ctx.font = '12px Arial';
-      ctx.fillText(formatearFechaCorta(d.fecha), x, y0 + 50);
+      ctx.font = 'bold 18px Arial';
+      ctx.fillText(d.diaSemana, x, y0 + 41);
+      ctx.font = '15px Arial';
+      ctx.fillText(formatearFechaCorta(d.fecha), x, y0 + 60);
     });
 
     slots.forEach(function (hora, fi) {
@@ -566,7 +566,7 @@
         ctx.fillStyle = slot.ocupado ? '#f6d9d5' : '#d9f0e1';
         redondear(ctx, x, y + 5, w, h, 6);
         ctx.fill();
-        ctx.font = 'bold 13px Arial';
+        ctx.font = 'bold 17px Arial';
         ctx.textAlign = 'left';
         ctx.fillStyle = '#0f3057';
         ctx.fillText(hora, x + 12, y + filaAlto / 2);
@@ -579,8 +579,8 @@
 
     ctx.textAlign = 'left';
     ctx.fillStyle = '#888';
-    ctx.font = '11px Arial';
-    ctx.fillText('Generado: ' + data.generado, 12, alto - 12);
+    ctx.font = '13px Arial';
+    ctx.fillText('Generado: ' + data.generado, 12, alto - 14);
 
     var link = document.getElementById('disp-link');
     link.href = canvas.toDataURL('image/png');
@@ -832,9 +832,17 @@
   // Igual que obtenerDisponibilidad(), pero le agrega el día de HOY adelante de los
   // próximos días hábiles (que arrancan mañana). Se usa solo en "Ver turnos dados"
   // (y en el atajo de la pantalla Imprimir), no en Registrar turno.
+  // Hoy sólo se agrega si todavía no empezó el horario de atención (si ya pasó
+  // la hora de inicio no tiene sentido mostrarlo: ya no se pueden dar esos turnos).
   function obtenerDisponibilidadConHoy() {
     return obtenerDisponibilidad().then(function (data) {
       var horas = (data.dias[0] ? data.dias[0].slots : []).map(function (s) { return s.hora; });
+      var horaInicio = horas[0] || '07:30';
+      var ahora = new Date();
+      var horaActual = pad(ahora.getHours()) + ':' + pad(ahora.getMinutes());
+      if (horaActual >= horaInicio) {
+        return data; // ya empezó (o pasó) el horario de hoy: no se agrega
+      }
       var fechaHoy = hoyISO();
       return llamarApi({ accion: 'buscar', texto: fechaHoy }).then(function (turnos) {
         turnos = (turnos || []).filter(function (t) { return t.fecha === fechaHoy; });
